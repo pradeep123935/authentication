@@ -7,6 +7,7 @@ import connectToDB from "./database/database";
 import { errorHandler } from "./middlewares/errorHandlers";
 import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "./middlewares/asyncController";
+import authRoutes from "./modules/auth/auth.routes";
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.get("/", asyncHandler(async (req, res, next) => {
     })
 }))
 
+app.use(`${config.BASE_PATH}/auth`, authRoutes);
 
 app.listen(config.PORT, async ()=>{
     console.log(`Server started running on ${config.PORT}!!`);
