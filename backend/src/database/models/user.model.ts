@@ -1,4 +1,4 @@
-import mongoose, { Schema } from "mongoose";
+import mongoose, { Schema, Document } from "mongoose";
 import { compareValue, hashValue } from "../../utils/bcrypt";
 
 interface UserPreferences {
@@ -29,6 +29,7 @@ const userSchema = new Schema<UserDocument>(
     name: { type: String, required: true },
     email: { type: String, unique: true, required: true },
     password: { type: String, required: true },
+    isEmailVerified: { type: Boolean, default: false },
     userPreferences: {
       type: userPreferencesSchema,
       default: {},
@@ -44,6 +45,7 @@ userSchema.pre("save", async function (next) {
   if (this.isModified("password")) {
     this.password = await hashValue(this.password);
   }
+  next();
 });
 
 userSchema.methods.comparePassword = async function (value: string) {

@@ -43,4 +43,4 @@ const VerificationCodeModel = mongoose.model<VerificationCodeDocument>(
   "verification_codes"
 );
 
-export default VerificationCodeDocument;
+export default VerificationCodeModel;

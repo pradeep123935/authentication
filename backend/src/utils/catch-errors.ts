@@ -12,9 +12,15 @@ export class NotFoundException extends AppError {
   }
 }
 
-export class BadRequest extends AppError {
+export class BadRequestException extends AppError {
   constructor(message = "Bad Request", errorCode?: ErrorCode) {
     super(message, StatusCodes.BAD_REQUEST, errorCode);
+  }
+}
+
+export class InternalServerException extends AppError {
+  constructor(message = "Internal Server Error", errorCode?: ErrorCode) {
+    super(message, StatusCodes.INTERNAL_SERVER_ERROR, errorCode);
   }
 }
 

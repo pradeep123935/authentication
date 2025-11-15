@@ -1,12 +1,250 @@
+import SessionModel from "../../database/models/session.model";
+import jwt from "jsonwebtoken";
+import { config } from "../../config/app.config";
+import UserModel from "../../database/models/user.model";
+import VerificationCodeModel from "../../database/models/verification.model";
+import { ErrorCode } from "../../enums/error-code.enum";
+import { VerificationEnum } from "../../enums/verification-code.enum";
 import { LoginDto, RegisterDto } from "../../interface/auth.interface";
+import {
+  BadRequestException,
+  HttpException,
+  InternalServerException,
+  NotFoundException,
+  UnauthorizedException,
+} from "../../utils/catch-errors";
+import {
+  anHourFromNow,
+  calculateExpirationDate,
+  fortyFiveMinutesFromNow,
+  ONE_DAY_IN_MS,
+  threeMinutesAgo,
+} from "../../utils/date-time";
+import { asyncHandler } from "../../middlewares/asyncController";
+import {
+  refreshTokenSignOptions,
+  RefreshTPayload,
+  signJwtToken,
+  verifyJwtToken,
+} from "../../utils/jwt";
+import { sendEmail } from "../../mailers/mailer";
+import { passwordResetTemplate, verifyEmailTemplate } from "../../mailers/templates/template";
+import { StatusCodes } from "http-status-codes";
 
 export class AuthService {
+  public async register(registerDto: RegisterDto) {
+    const { name, email, password } = registerDto;
+    const existingUser = await UserModel.exists({
+      email,
+    });
 
-    public async register(registerDto:RegisterDto) {
-
+    if (existingUser) {
+      throw new BadRequestException(
+        "User already exists with the given email",
+        ErrorCode.AUTH_EMAIL_ALREADY_EXISTS
+      );
     }
 
-    public async login(loginDto:LoginDto) {
-        
+    const newUser = await UserModel.create({
+      name,
+      email,
+      password,
+    });
+
+    const userId = newUser._id;
+
+    const verification = await VerificationCodeModel.create({
+      userId,
+      type: VerificationEnum.EMAIL_VERIFICATION,
+      expiresAt: fortyFiveMinutesFromNow(),
+    });
+
+    const verificationUrl = `${config.APP_ORIGIN}/confirm-account?code=${verification.code}`;
+    await sendEmail({
+      to: newUser.email,
+      ...verifyEmailTemplate(verificationUrl),
+    });
+    return {
+      user: newUser,
+    };
+  }
+
+  public async login(loginDto: LoginDto) {
+    const { email, password, userAgent } = loginDto;
+
+    const user = await UserModel.findOne({
+      email,
+    });
+
+    if (!user) {
+      throw new BadRequestException(
+        "Invalid email or password provided",
+        ErrorCode.AUTH_USER_NOT_FOUND
+      );
     }
+
+    const isPasswordValid = await user.comparePassword(password);
+
+    if (!isPasswordValid) {
+      throw new BadRequestException(
+        "Invalid email or password provided",
+        ErrorCode.AUTH_USER_NOT_FOUND
+      );
+    }
+
+    const session = await SessionModel.create({
+      userId: user._id,
+      userAgent,
+    });
+
+    const accessToken = signJwtToken({
+      userId: user._id,
+      sessionId: session._id,
+    });
+
+    const refreshToken = signJwtToken({
+      sessionId: session._id,
+    });
+
+    return {
+      user,
+      accessToken,
+      refreshToken,
+      mfaRequired: false,
+    };
+  }
+
+  public async refreshToken(refreshToken: string) {
+    const { payload } = verifyJwtToken<RefreshTPayload>(refreshToken, {
+      secret: refreshTokenSignOptions.secret,
+    });
+
+    if (!payload) {
+      throw new UnauthorizedException("Invalid refresh token");
+    }
+
+    const session = await SessionModel.findById(payload.sessionId);
+
+    if (!session) {
+      throw new UnauthorizedException("Invalid session. Please login again.");
+    }
+
+    const now = Date.now();
+    if (session.expiredAt.getTime() <= now) {
+      throw new UnauthorizedException(
+        "Session has expired. Please login again."
+      );
+    }
+
+    const sessionRequiredRefresh =
+      session.expiredAt.getTime() - now <= ONE_DAY_IN_MS; // 1 day
+
+    if (sessionRequiredRefresh) {
+      session.expiredAt = calculateExpirationDate(
+        config.JWT.JWT_REFRESH_EXPIRES_IN
+      );
+      await session.save();
+    }
+
+    const newRefreshToken = sessionRequiredRefresh
+      ? signJwtToken(
+          {
+            sessionId: session._id,
+          },
+          refreshTokenSignOptions
+        )
+      : undefined;
+
+    const accessToken = signJwtToken({
+      userId: session.userId,
+      sessionId: session._id,
+    });
+
+    return {
+      accessToken,
+      newRefreshToken,
+    };
+  }
+
+  public async verifyEmail(code: string) {
+    const validCode = await VerificationCodeModel.findOne({
+      code,
+      type: VerificationEnum.EMAIL_VERIFICATION,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!validCode) {
+      throw new BadRequestException("Invalid or expired verification code");
+    }
+
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      validCode.userId,
+      { isEmailVerified: true },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      throw new BadRequestException(
+        "Unable to verify email for the user",
+        ErrorCode.VERIFICATION_ERROR
+      );
+    }
+
+    await validCode.deleteOne();
+
+    return {
+      user: updatedUser,
+    };
+  }
+
+  public async forgotPassword(email: string) {
+    const user = await UserModel.findOne({ email });
+
+    if (!user) {
+      throw new NotFoundException("User with the given email does not exist");
+    }
+
+    const timeAgo = threeMinutesAgo();
+    const maxAttempts = 2;
+
+    const count = await VerificationCodeModel.countDocuments({
+      userId: user._id,
+      type: VerificationEnum.PASSWORD_RESET,
+      createdAt: { $gte: timeAgo },
+    });
+
+    if (count >= maxAttempts) {
+      throw new HttpException(
+        "Too manyrequests. Please try again later.",
+        StatusCodes.TOO_MANY_REQUESTS,
+        ErrorCode.AUTH_TOO_MANY_REQUESTS
+      );
+    }
+
+    const expiresAt = anHourFromNow();
+    const validCode = await VerificationCodeModel.create({
+      userId: user._id,
+      type: VerificationEnum.PASSWORD_RESET,
+      expiresAt,
+    });
+
+    const resetLink = `${config.APP_ORIGIN}/reset-password?code=${
+      validCode.code
+    }&exp=${expiresAt.getTime()}`;
+
+    const {data, error} = await sendEmail({
+      to: user.email,
+      ...passwordResetTemplate(resetLink)
+    });
+
+    if(!data?.id) {
+        console.error("Error sending password reset email:", error);
+        throw new InternalServerException("Failed to send password reset email. Please try again later.");
+    }
+
+    return {
+      url: resetLink,
+      emailId: data.id,
+    }
+  }
 }

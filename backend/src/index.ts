@@ -12,23 +12,29 @@ import authRoutes from "./modules/auth/auth.routes";
 const app = express();
 
 app.use(express.json());
-app.use(express.urlencoded({extended:true}));
-app.use(cors({
+app.use(express.urlencoded({ extended: true }));
+app.use(
+  cors({
     origin: config.APP_ORIGIN,
-    credentials:true
-}))
+    credentials: true,
+  })
+);
 app.use(cookieParser());
-app.use(errorHandler);
 
-app.get("/", asyncHandler(async (req, res, next) => {
+app.get(
+  "/",
+  asyncHandler(async (req, res, next) => {
     res.status(StatusCodes.OK).json({
-        message: "Server is running"
-    })
-}))
+      message: "Server is running",
+    });
+  })
+);
 
 app.use(`${config.BASE_PATH}/auth`, authRoutes);
 
-app.listen(config.PORT, async ()=>{
-    console.log(`Server started running on ${config.PORT}!!`);
-    await connectToDB();
-})
+app.use(errorHandler);
+
+app.listen(config.PORT, async () => {
+  console.log(`Server started running on ${config.PORT}!!`);
+  await connectToDB();
+});
