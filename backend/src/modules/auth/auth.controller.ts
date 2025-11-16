@@ -1,13 +1,20 @@
 import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../middlewares/asyncController";
 import { AuthService } from "./auth.service";
-import { emailSchema, loginSchema, registerSchema, verificationEmailSchema } from "../../validators/auth.validator";
 import {
+  emailSchema,
+  loginSchema,
+  registerSchema,
+  resetPasswordSchema,
+  verificationEmailSchema,
+} from "../../validators/auth.validator";
+import {
+  clearAuthenticationCookies,
   getAccessTokenCookieOptions,
   getRefreshTokenCookieOptions,
   setAuthenticationCookies,
 } from "../../utils/cookie";
-import { UnauthorizedException } from "../../utils/catch-errors";
+import { NotFoundException, UnauthorizedException } from "../../utils/catch-errors";
 
 export class AuthController {
   private authService: AuthService;
@@ -84,6 +91,25 @@ export class AuthController {
     await this.authService.forgotPassword(email);
     return res.status(StatusCodes.OK).json({
       message: "Password reset email sent successfully",
+    });
+  });
+
+  public resetPassword = asyncHandler(async (req, res, next): Promise<any> => {
+    const body = resetPasswordSchema.parse(req.body);
+    await this.authService.resetPassword(body);
+    return clearAuthenticationCookies(res).status(StatusCodes.OK).json({
+      message: "Password reset successfully",
+    });
+  });
+
+  public logout = asyncHandler(async (req, res, next): Promise<any> => {
+    const sessionId = req.sessionId;
+    if(!sessionId) {
+      throw new NotFoundException("Session is invalid");
+    }
+    await this.authService.logout(sessionId);
+    return clearAuthenticationCookies(res).status(StatusCodes.OK).json({
+      message: "Logged out successfully",
     });
   });
 }

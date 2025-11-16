@@ -8,6 +8,7 @@ import { errorHandler } from "./middlewares/errorHandlers";
 import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "./middlewares/asyncController";
 import authRoutes from "./modules/auth/auth.routes";
+import passport from "./middlewares/passport";
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use(
   })
 );
 app.use(cookieParser());
+app.use(passport.initialize());
 
 app.get(
   "/",

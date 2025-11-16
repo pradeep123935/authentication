@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { VerificationEnum } from "../../enums/verification-code.enum";
+import { VerificationEnum } from "../../common/enums/verification-code.enum";
 import { generateUniqueCode } from "../../utils/uuid";
 
 export interface VerificationCodeDocument extends Document {

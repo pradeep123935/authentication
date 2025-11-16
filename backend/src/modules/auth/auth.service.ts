@@ -3,9 +3,13 @@ import jwt from "jsonwebtoken";
 import { config } from "../../config/app.config";
 import UserModel from "../../database/models/user.model";
 import VerificationCodeModel from "../../database/models/verification.model";
-import { ErrorCode } from "../../enums/error-code.enum";
-import { VerificationEnum } from "../../enums/verification-code.enum";
-import { LoginDto, RegisterDto } from "../../interface/auth.interface";
+import { ErrorCode } from "../../common/enums/error-code.enum";
+import { VerificationEnum } from "../../common/enums/verification-code.enum";
+import {
+  LoginDto,
+  RegisterDto,
+  ResetPasswordDto,
+} from "../../common/interface/auth.interface";
 import {
   BadRequestException,
   HttpException,
@@ -28,8 +32,12 @@ import {
   verifyJwtToken,
 } from "../../utils/jwt";
 import { sendEmail } from "../../mailers/mailer";
-import { passwordResetTemplate, verifyEmailTemplate } from "../../mailers/templates/template";
+import {
+  passwordResetTemplate,
+  verifyEmailTemplate,
+} from "../../mailers/templates/template";
 import { StatusCodes } from "http-status-codes";
+import { hashValue } from "../../utils/bcrypt";
 
 export class AuthService {
   public async register(registerDto: RegisterDto) {
@@ -232,19 +240,54 @@ export class AuthService {
       validCode.code
     }&exp=${expiresAt.getTime()}`;
 
-    const {data, error} = await sendEmail({
+    const { data, error } = await sendEmail({
       to: user.email,
-      ...passwordResetTemplate(resetLink)
+      ...passwordResetTemplate(resetLink),
     });
 
-    if(!data?.id) {
-        console.error("Error sending password reset email:", error);
-        throw new InternalServerException("Failed to send password reset email. Please try again later.");
+    if (!data?.id) {
+      console.error("Error sending password reset email:", error);
+      throw new InternalServerException(
+        "Failed to send password reset email. Please try again later."
+      );
     }
 
     return {
       url: resetLink,
       emailId: data.id,
+    };
+  }
+
+  public async resetPassword({ password, verificationCode }: ResetPasswordDto) {
+    const validCode = await VerificationCodeModel.findOne({
+      code: verificationCode,
+      type: VerificationEnum.PASSWORD_RESET,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!validCode) {
+      throw new NotFoundException("Invalid or expired verification code");
     }
+
+    const hashedPassword = await hashValue(password);
+
+    const updatedUser = await UserModel.findByIdAndUpdate(validCode.userId, {
+      password: hashedPassword,
+    });
+
+    if (!updatedUser) {
+      throw new BadRequestException("Failed to reset password for the user");
+    }
+
+    await validCode.deleteOne();
+    await SessionModel.deleteMany({ userId: updatedUser._id });
+
+    return {
+      user: updatedUser,
+    };
+  }
+
+  public async logout(sessionId: string) {
+    return await SessionModel.findByIdAndDelete(sessionId);
   }
 }

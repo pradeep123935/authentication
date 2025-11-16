@@ -1,5 +1,5 @@
 import { StatusCodes } from "http-status-codes";
-import { ErrorCode } from "../enums/error-code.enum";
+import { ErrorCode } from "../common/enums/error-code.enum";
 
 export class AppError extends Error {
   public statusCode: StatusCodes;
