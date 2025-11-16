@@ -100,6 +100,15 @@ export class AuthService {
       );
     }
 
+    if (user.userPreferences.enable2FA) {
+      return {
+        user: null,
+        mfaRequired: true,
+        accessToken: "",
+        refreshToken: "",
+      };
+    }
+
     const session = await SessionModel.create({
       userId: user._id,
       userAgent,
@@ -110,9 +119,12 @@ export class AuthService {
       sessionId: session._id,
     });
 
-    const refreshToken = signJwtToken({
-      sessionId: session._id,
-    });
+    const refreshToken = signJwtToken(
+      {
+        sessionId: session._id,
+      },
+      refreshTokenSignOptions
+    );
 
     return {
       user,

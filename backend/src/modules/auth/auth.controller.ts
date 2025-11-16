@@ -14,7 +14,10 @@ import {
   getRefreshTokenCookieOptions,
   setAuthenticationCookies,
 } from "../../utils/cookie";
-import { NotFoundException, UnauthorizedException } from "../../utils/catch-errors";
+import {
+  NotFoundException,
+  UnauthorizedException,
+} from "../../utils/catch-errors";
 
 export class AuthController {
   private authService: AuthService;
@@ -43,6 +46,14 @@ export class AuthController {
 
     const { user, accessToken, refreshToken, mfaRequired } =
       await this.authService.login(body);
+
+    if (mfaRequired) {
+      return res.status(StatusCodes.OK).json({
+        message: "Verify MFA authentication",
+        mfaRequired,
+        user,
+      });
+    }
     return setAuthenticationCookies({ res, accessToken, refreshToken })
       .status(StatusCodes.OK)
       .json({
@@ -104,7 +115,7 @@ export class AuthController {
 
   public logout = asyncHandler(async (req, res, next): Promise<any> => {
     const sessionId = req.sessionId;
-    if(!sessionId) {
+    if (!sessionId) {
       throw new NotFoundException("Session is invalid");
     }
     await this.authService.logout(sessionId);

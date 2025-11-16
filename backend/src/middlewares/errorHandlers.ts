@@ -1,7 +1,7 @@
 import { ErrorRequestHandler, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { AppError } from "../utils/app-error";
-import z from "zod";
+import { z } from "zod";
 import { clearAuthenticationCookies, REFRESH_PATH } from "../utils/cookie";
 
 const formatZodError = (res: Response, error: z.ZodError) => {

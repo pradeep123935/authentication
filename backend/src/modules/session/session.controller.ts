@@ -2,7 +2,7 @@ import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../middlewares/asyncController";
 import { SessionService } from "./session.service";
 import { NotFoundException } from "../../utils/catch-errors";
-import z from "zod";
+import { z } from "zod";
 
 export class SessionController {
   private sessionService: SessionService;
