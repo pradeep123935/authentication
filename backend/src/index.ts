@@ -9,6 +9,8 @@ import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "./middlewares/asyncController";
 import authRoutes from "./modules/auth/auth.routes";
 import passport from "./middlewares/passport";
+import sessionRouter from "./modules/session/session.routes";
+import { authenticateJwt } from "./common/strategies/jwt.strategy";
 
 const app = express();
 
@@ -33,6 +35,7 @@ app.get(
 );
 
 app.use(`${config.BASE_PATH}/auth`, authRoutes);
+app.use(`${config.BASE_PATH}/session`, authenticateJwt, sessionRouter);
 
 app.use(errorHandler);
 
